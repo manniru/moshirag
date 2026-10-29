@@ -752,7 +752,7 @@ const ConversationContent: FC<{
               </div>
             )}
             {/* Show Retrieval - below orb in flow on mobile, absolute bottom-center of left column on md+ */}
-            {!showRetrievalPanel && (
+            {!showRetrievalPanel && brand.retrieval && (
               <button
                 type="button"
                 onClick={() => setShowRetrievalPanel(true)}

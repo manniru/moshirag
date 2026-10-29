@@ -278,11 +278,13 @@ export const Queue: FC = () => {
               <p className="text-sm leading-relaxed mb-2" style={{ color: colors.textLight }}>
                 Meet <span className="font-bold" style={{ color: colors.accentGreen }}>{brand.name} {brand.suffix}</span>: a full-duplex voice assistant that listens and speaks at the same time, like a natural phone call.
               </p>
+              {brand.retrieval && (
+                <p className="text-sm leading-relaxed mb-2" style={{ color: colors.textLight }}>
+                  When a question needs facts, it looks them up in the background with its retrieval model and keeps talking while it does.
+                </p>
+              )}
               <p className="text-sm leading-relaxed mb-2" style={{ color: colors.textLight }}>
-                When a question needs facts, it looks them up in the background with its retrieval model and keeps talking while it does.
-              </p>
-              <p className="text-sm leading-relaxed mb-2" style={{ color: colors.textLight }}>
-                Everything runs on this machine: speech, language model and retrieval. No audio leaves the computer.
+                Everything runs on this machine{brand.retrieval ? ": speech, language model and retrieval" : ""}. No audio leaves the computer.
               </p>
               <p className="text-sm leading-relaxed mb-2" style={{ color: colors.textLight }}>Conversations are limited to 5 minutes. Google Chrome gives the best experience.</p>
               <p className="text-sm leading-relaxed mb-2" style={{ color: colors.textLight }}>
@@ -290,7 +292,7 @@ export const Queue: FC = () => {
                 <a href={brand.companyUrl} className="underline" style={{ color: colors.accentGreen }}>
                   {brand.company}
                 </a>
-                , built on the open-source MoshiRAG model by Kyutai.
+                , built on the open-source {brand.retrieval ? "MoshiRAG" : "Moshi"} model by Kyutai.
               </p>
             </div>
             {showMicrophoneAccessMessage && (

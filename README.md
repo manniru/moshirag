@@ -63,6 +63,29 @@ Build the image yourself with `docker build -f docker/Dockerfile -t moshirag .` 
 and JIT-compiled for newer GPUs on first use. Override with `--build-arg CUDA_COMPUTE_CAP=89`
 to build natively for one GPU family.
 
+## Brilliant Voice AI on a Mac (offline, no retrieval)
+
+The web UI carries Brilliant Esystems branding (`client/src/brand.ts`: name, logo, colours,
+speaker label; Kyutai's post-session survey is off). On an Apple-silicon Mac, MoshiRAG itself
+is not real time: `moshi-backend` built with `--features metal` measured 0.10 s (F16) to
+0.11 s (BF16) per 80 ms frame for the main model alone on an M1 Max, and candle 0.9.1's Metal
+backend aborts when two threads encode on one device. The Mac edition therefore runs Kyutai's
+plain **Moshi** (Moshika voice, MLX, 8-bit, `moshi_mlx` 0.3.0) behind the same branded UI, built
+with `VITE_BRAND_RETRIEVAL=0` so it does not mention retrieval. It answers from what the model
+knows; it does not look facts up.
+
+```bash
+git clone https://github.com/manniru/moshirag.git && cd moshirag
+deploy/mac/setup.sh   # once, needs internet: moshi_mlx in ~/moshi-mlx/.venv, ~8 GB model, web UI
+deploy/mac/start.sh   # offline; opens http://localhost:8998 (use headphones)
+deploy/mac/stop.sh
+```
+
+Needs Homebrew `python@3.12` (MLX has no wheels for newer Pythons yet) and `node`. Tested
+2026-10-29 on an M1 Max (64 GB, macOS 27.2): first audio after 0.17-0.20 s, real-time ratio
+0.95-0.97, about 8.5 GB of memory. `HF_HUB_DISABLE_XET=1` is set for the download because the Xet
+transfer path stalled at a few KB/s on the office link while plain HTTPS ran at ~10 MB/s.
+
 ## Architecture
 
 ```
