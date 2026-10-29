@@ -8,6 +8,58 @@ README follows below this section, unchanged.
 **headphones** (Moshi listens while it talks), and ask a factual question in English, e.g.
 "Who won the FIFA World Cup in 2018, and who was the top scorer?". One conversation at a time.
 
+## Run it anywhere with Docker (one command)
+
+Requirements on the server: an NVIDIA GPU with **compute capability 8.0+** (BF16; e.g. A100,
+A6000, A40, L40S, RTX 3090/4090/5090, H100) and **about 44 GB of VRAM** for everything on one
+card (48 GB recommended), an NVIDIA driver that supports CUDA 12.9 (R575 or newer), Docker with
+the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/),
+and about 60 GB of free disk.
+
+```bash
+git clone git@github.com:manniru/moshirag.git && cd moshirag
+docker compose up -d          # pulls ghcr.io/manniru/moshirag:latest, or builds it if missing
+docker compose logs -f        # wait for "standalone worker listening"
+```
+
+Or without compose:
+
+```bash
+docker run -d --name moshirag --gpus all --shm-size 8g -p 8998:8998 \
+  -v moshirag-data:/data --restart unless-stopped ghcr.io/manniru/moshirag:latest
+```
+
+Then open `https://<server-ip>:8998` and accept the self-signed certificate warning (browsers
+only allow the microphone over HTTPS or on localhost). Behind your own HTTPS proxy or a
+Cloudflare tunnel, set `MOSHI_HTTPS=0` and point the proxy at `http://<server>:8998`.
+
+What the container does on start (`docker/entrypoint.sh`):
+
+1. Checks the GPU (refuses cards older than compute capability 8.0).
+2. Downloads the models into the `/data` volume, about 42 GB, only on the first start
+   (10-30 minutes depending on bandwidth): Moshika-RAG 7B, Kyutai STT 1B, ARC4 encoder, the
+   Llama 3.2 tokenizer (converted for `tokenizers` 0.15), and Qwen3-14B-AWQ.
+3. Starts vLLM with Qwen3-14B (thinking off) on `127.0.0.1:8002`, using `LLM_GPU_MEM_GB` of VRAM.
+4. Starts `moshi-backend` (web UI + WebSocket `/api/chat`) on port 8998.
+
+After the download it runs fully offline (`HF_HUB_OFFLINE=1`, vLLM usage statistics off): no
+external API or LLM is called. Restarts take about 2 minutes (vLLM ~1 min, Moshi ~40 s).
+
+| Variable | Default | Meaning |
+| :--- | :--- | :--- |
+| `MOSHI_HTTPS` | `1` | `1` = HTTPS with a self-signed certificate (kept in `/data/certs`); `0` = plain HTTP for use behind a proxy |
+| `LLM_HF_MODEL` / `LLM_SERVED_NAME` | `Qwen/Qwen3-14B-AWQ` / `qwen3-14b` | Retrieval model served by vLLM |
+| `LLM_GPU_MEM_GB` | `18` | VRAM given to vLLM (weights ~9.5 GB + KV cache). Moshi + STT + encoder need ~24 GB more |
+| `LLM_BASE_URL`, `LLM_MODEL_NAME`, `LLM_API_KEY` | empty | Use an external OpenAI-compatible LLM instead of vLLM (then a 24-32 GB GPU is enough) |
+| `RAG_TIMEOUT` | `3.0` | Seconds to wait for a reference |
+| `HF_TOKEN` | empty | Only needed if you switch to a gated model |
+| `MOSHI_PUBLISH_PORT` | `8998` | Host port (compose only) |
+
+Build the image yourself with `docker build -f docker/Dockerfile -t moshirag .` (about
+20 minutes; no GPU needed to build). The kernels are compiled as PTX for compute capability 8.0
+and JIT-compiled for newer GPUs on first use. Override with `--build-arg CUDA_COMPUTE_CAP=89`
+to build natively for one GPU family.
+
 ## Architecture
 
 ```

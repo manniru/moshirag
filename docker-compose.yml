@@ -1,40 +1,41 @@
-version: "3.8"
-
-name: moshi
+# MoshiRAG on any NVIDIA GPU server (48 GB VRAM recommended, compute capability 8.0+).
+#   docker compose up -d && docker compose logs -f
+# First start downloads ~42 GB of models into the "moshirag-data" volume (10-30 min),
+# later starts take about 2 minutes. Then open https://<server>:8998 (self-signed certificate:
+# accept the browser warning) or put it behind an HTTPS proxy/tunnel with MOSHI_HTTPS=0.
+name: moshirag
 
 services:
-
-  moshi:
+  moshirag:
+    image: ${MOSHIRAG_IMAGE:-ghcr.io/manniru/moshirag:latest}
     build:
-      context: ./moshi
-    expose:
-     - 8998/tcp
+      context: .
+      dockerfile: docker/Dockerfile
     restart: unless-stopped
+    ports:
+      - "${MOSHI_PUBLISH_PORT:-8998}:8998"
     volumes:
-      - hf-cache:/root/.cache/huggingface
+      - moshirag-data:/data
+    shm_size: "8gb"
     environment:
-      #- HF_REPO=kyutai/moshika-pytorch-bf16
-      - HF_REPO=kyutai/moshiko-pytorch-bf16
+      MOSHI_HTTPS: ${MOSHI_HTTPS:-1}
+      LLM_HF_MODEL: ${LLM_HF_MODEL:-Qwen/Qwen3-14B-AWQ}
+      LLM_SERVED_NAME: ${LLM_SERVED_NAME:-qwen3-14b}
+      LLM_GPU_MEM_GB: ${LLM_GPU_MEM_GB:-18}
+      RAG_TIMEOUT: ${RAG_TIMEOUT:-3.0}
+      HF_TOKEN: ${HF_TOKEN:-}
+      # Set these three to use an external OpenAI-compatible LLM instead of the local vLLM
+      # (frees ~18 GB, so a 24-32 GB GPU is enough).
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_MODEL_NAME: ${LLM_MODEL_NAME:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
-              capabilities: [gpu]
               count: all
-
-  tunnel:
-    image: cloudflare/cloudflared:latest
-    pull_policy: always
-    restart: unless-stopped
-    expose:
-      - 43337/tcp
-    environment:
-      TUNNEL_URL: http://moshi:8998
-      TUNNEL_METRICS: 0.0.0.0:43337
-    command: tunnel --no-autoupdate
-    depends_on:
-      - moshi
+              capabilities: [gpu]
 
 volumes:
-  hf-cache:
+  moshirag-data:
