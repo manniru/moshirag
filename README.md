@@ -10,9 +10,11 @@ README follows below this section, unchanged.
 
 ## Run it anywhere with Docker (one command)
 
-Requirements on the server: an NVIDIA GPU with **compute capability 8.0+** (BF16; e.g. A100,
-A6000, A40, L40S, RTX 3090/4090/5090, H100) and **about 44 GB of VRAM** for everything on one
-card (48 GB recommended), an NVIDIA driver that supports CUDA 12.9 (R575 or newer), Docker with
+Image: `ghcr.io/manniru/moshirag:latest` (public, ~11 GB compressed; built on esys 2026-10-29 but
+not yet run on a GPU). Requirements on the server: an NVIDIA GPU with **compute capability 8.0+**
+(BF16; e.g. A100, A6000, A40, L40S, RTX 3090/4090/5090, H100) and **about 44 GB of VRAM** for
+everything on one card (48 GB recommended), an NVIDIA driver that supports CUDA 12.9 (R575 or
+newer, required by the vLLM base image), Docker with
 the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/),
 and about 60 GB of free disk.
 
@@ -77,7 +79,12 @@ When Moshi emits its retrieval token (`<ret>`), the backend sends the transcript
 retrieval LLM, which answers with a one-line `Reference: ...` (about 0.5-1 s). The reference is encoded and
 injected into Moshi while it keeps talking.
 
-## Where it runs
+## Where it ran (first deployment, 2026-10-29)
+
+> **Status:** the Vast.ai instance below was destroyed on 2026-10-29 after testing (about 1 h,
+> ~$0.55). `moshirag.esys.ng` and its tunnel ingress remain and answer 502 until a GPU server is
+> attached again: run the Docker image on any GPU server and point the ingress at it.
+
 
 | Piece | Where |
 | :--- | :--- |

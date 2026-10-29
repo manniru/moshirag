@@ -2,7 +2,8 @@
 # web UI, and a self-hosted retrieval LLM (vLLM + Qwen3-14B-AWQ). Models are downloaded into the
 # /data volume on first start. Build from the repository root:
 #   docker build -f docker/Dockerfile -t moshirag .
-ARG CUDA_BUILD_IMAGE=nvidia/cuda:12.9.1-devel-ubuntu22.04
+# cudarc 0.16.2 (via candle 0.9.1) rejects CUDA 12.9 ("Unsupported cuda toolkit version"); 12.4 is tested.
+ARG CUDA_BUILD_IMAGE=nvidia/cuda:12.4.1-devel-ubuntu22.04
 ARG VLLM_IMAGE=vllm/vllm-openai:v0.31.0-cu129
 
 # ---- web client -------------------------------------------------------------------------------
