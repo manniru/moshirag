@@ -10,8 +10,9 @@ README follows below this section, unchanged.
 
 ## Run it anywhere with Docker (one command)
 
-Image: `ghcr.io/manniru/moshirag:latest` (public, ~11 GB compressed; built on esys 2026-10-29 but
-not yet run on a GPU). Requirements on the server: an NVIDIA GPU with **compute capability 8.0+**
+Image: `ghcr.io/manniru/moshirag:latest` (public, ~11 GB compressed). Tested on a Vast.ai RTX A6000
+on 2026-10-29: image pull ~8 min, model download ~6 min, ready ~4 min later; spoken question
+answered with a retrieved reference, first audio after 0.35 s, real-time ratio 0.94. Requirements on the server: an NVIDIA GPU with **compute capability 8.0+**
 (BF16; e.g. A100, A6000, A40, L40S, RTX 3090/4090/5090, H100) and **about 44 GB of VRAM** for
 everything on one card (48 GB recommended), an NVIDIA driver that supports CUDA 12.9 (R575 or
 newer, required by the vLLM base image), Docker with

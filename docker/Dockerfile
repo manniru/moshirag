@@ -45,6 +45,9 @@ ENV HF_HOME=/data/hf \
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         libssl3 ca-certificates curl \
     && rm -rf /var/lib/apt/lists/*
+# The image's torchcodec 0.17 is built for CUDA 13 (libnvrtc.so.13) and fails to load with an
+# OSError that vLLM does not catch, so `vllm serve` dies at import. Only audio inputs use it.
+RUN pip uninstall -y torchcodec
 COPY --from=backend /out/moshi-backend /opt/moshirag/bin/moshi-backend
 COPY --from=backend /out/lib/ /opt/moshirag/lib/
 COPY --from=client /src/client/dist/ /opt/moshirag/client/
