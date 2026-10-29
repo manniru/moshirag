@@ -310,6 +310,18 @@ impl RagManager {
                 obj.insert("thinking".into(), serde_json::json!({"type": "disabled"}));
             }
         }
+        // Self-hosted vLLM (e.g. Qwen3): vLLM turns `reasoning_effort` into thinking mode, and
+        // with stop "\n" the reply is then just "<think>". Ask the chat template for no thinking.
+        let local = base_url.contains("://127.0.0.1") || base_url.contains("://localhost");
+        if local {
+            if let Some(obj) = request_body.as_object_mut() {
+                obj.remove("reasoning_effort");
+                obj.insert(
+                    "chat_template_kwargs".into(),
+                    serde_json::json!({"enable_thinking": false}),
+                );
+            }
+        }
 
         tracing::info!("RAG: Calling LLM API '{}' content_len={}", model_name, user_content.len());
 
@@ -366,6 +378,12 @@ impl RagManager {
             .first()
             .map(|choice| choice.message.content.clone())
             .unwrap_or_default();
+        // Drop a leading <think>...</think> block if a model still emits one.
+        let content = match content.find("</think>") {
+            Some(i) => content[i + "</think>".len()..].to_string(),
+            None if content.trim_start().starts_with("<think>") => String::new(),
+            None => content,
+        };
         let content = if anthropic {
             content.trim_start().split('\n').next().unwrap_or_default().to_string()
         } else {

@@ -18,11 +18,11 @@ browser ─https/wss─► Cloudflare ─► tunnel esys-proxmox-agent (cloudfla
               ├─ STT 1B          (kyutai/stt-1b-en_fr-candle) for the user transcript
               ├─ ARC4 encoder    (kyutai/ARC4_Encoder_Llama) encodes retrieved references
               ├─ web UI          (client/dist, built with Vite)
-              └─ retrieval LLM ─► Anthropic API, claude-haiku-5-5 (OpenAI-compatible endpoint)
+              └─ retrieval LLM ─► vLLM 127.0.0.1:8002 on the same GPU: Qwen/Qwen3-14B-AWQ (self-hosted, free)
 ```
 
-When Moshi emits its retrieval token (`<ret>`), the backend sends the transcript to Claude,
-which answers with a one-line `Reference: ...` (about 1 s). The reference is encoded and
+When Moshi emits its retrieval token (`<ret>`), the backend sends the transcript to the
+retrieval LLM, which answers with a one-line `Reference: ...` (about 0.5-1 s). The reference is encoded and
 injected into Moshi while it keeps talking.
 
 ## Where it runs
@@ -34,13 +34,34 @@ injected into Moshi while it keeps talking.
 | Models | Hugging Face cache `/root/.cache/huggingface` on the instance (~33 GB); converted tokenizer `/opt/moshirag/llama32-tokenizer.json` |
 | Port forward | esys systemd unit `moshirag-tunnel` (`deploy/moshirag-tunnel.service`): `127.0.0.1:18998` → instance `127.0.0.1:8998` |
 | Public | Cloudflare tunnel `esys-proxmox-agent` ingress `moshirag.esys.ng` → `http://127.0.0.1:18998` (no NPM), proxied CNAME in the `esys.ng` zone. Tunnel config backup `secrets/moshirag/tunnel-config-backup-*.json` |
-| Secrets (esys, not in git) | `/root/esys/secrets/moshirag/`: `vast.env` (Vast API key), `moshirag.env` (Anthropic key) |
+| Retrieval LLM | vLLM 0.31 in `/opt/vllm` (venv), started by `deploy/run-llm.sh` (log `/opt/moshirag/llm.log`), model `Qwen/Qwen3-14B-AWQ` served as `qwen3-14b`, thinking off, `--gpu-memory-utilization 0.38` (~18 GB) |
+| Secrets (esys, not in git) | `/root/esys/secrets/moshirag/`: `vast.env` (Vast API key), `moshirag.env` (LLM settings). The Anthropic variant stays on the instance as `/opt/moshirag/moshirag.env.anthropic` |
 
-GPU memory use is about 23.7 GB of 48 GB with `batch_size: 1`.
+GPU memory use is about 42.5 GB of 48 GB: Moshi + STT + encoder ~24 GB (`batch_size: 1`), vLLM ~18 GB.
+
+### Choice of retrieval model
+
+First deployed with Claude `claude-haiku-5-5` (paid API), then switched to a self-hosted model
+on the same GPU. Six fact questions with the real reference prompt (2018 World Cup winner and top
+scorer, capital of Nigeria, current Nigerian president, Kilimanjaro height, Things Fall Apart,
+speed of light):
+
+| Model (AWQ, vLLM) | Correct | Latency |
+| :--- | :--- | :--- |
+| Qwen2.5-7B-Instruct | 4/6 (Mbappé as 2018 top scorer, wrong speed-of-light unit) | 0.15-0.2 s |
+| Qwen2.5-14B-Instruct | 4/6 (Mbappé, Buhari as president) | 0.3-0.6 s |
+| **Qwen3-14B** (thinking off) | **6/6** | 0.45-0.95 s |
+
+Switch models with `LLM_HF_MODEL`/`LLM_SERVED_NAME` for `deploy/run-llm.sh` and the matching
+`LLM_MODEL_NAME` in `moshirag.env`. Larger models (Qwen 32B AWQ, ~19 GB) do not fit beside Moshi.
 
 ## Changes from upstream
 
-* `rust/moshi-backend/src/rag_manager.rs`: when `LLM_BASE_URL` is `api.anthropic.com`, the
+* `rust/moshi-backend/src/rag_manager.rs`: when `LLM_BASE_URL` is `127.0.0.1`/`localhost`
+  (self-hosted vLLM), the request drops `reasoning_effort` (vLLM turns it into Qwen3 thinking
+  mode, and with stop `\n` the reply was just `<think>`) and sends
+  `chat_template_kwargs: {"enable_thinking": false}`; a leading `<think>...</think>` block is
+  stripped from any reply. When `LLM_BASE_URL` is `api.anthropic.com`, the
   request drops `stop: ["\n"]` (Anthropic rejects whitespace-only stop sequences) and
   `reasoning_effort`, and sends `thinking: {"type": "disabled"}` (otherwise Claude can spend all
   256 tokens thinking and return an empty reference). The reply is cut at its first newline
@@ -61,23 +82,24 @@ cd /root/esys/moshirag
 deploy/vast.sh status          # state, price, ssh port, remaining Vast credit
 deploy/vast.sh stop            # pause: stops GPU billing (disk still ~$0.04/h)
 deploy/vast.sh start           # resume; then check the ssh port (see below) and start the server
-deploy/deploy.sh vastmoshi     # copy code, build (incremental), restart the server
+deploy/deploy.sh vastmoshi     # copy code, build (incremental), start vLLM if needed, restart the server
 ssh vastmoshi tail -f /opt/moshirag/server.log
 ```
 
 After `start`, Vast may give the instance a new SSH port or IP: compare `deploy/vast.sh status`
 with `Host vastmoshi` in `/root/.ssh/config`, fix it, `systemctl restart moshirag-tunnel`, then
-run `deploy/deploy.sh` (or `ssh vastmoshi 'setsid nohup /opt/moshirag/deploy/run.sh >
-/opt/moshirag/server.log 2>&1 < /dev/null &'`). The server does not start by itself after a
-resume: Vast containers have no systemd. Model loading takes about 40 s; the site answers
-502 until then.
+run `deploy/deploy.sh`, which starts vLLM first (about 1 min) and then the Moshi server. Neither
+starts by itself after a resume: Vast containers have no systemd. Moshi loading takes about
+40 s; the site answers 502 until then. Start vLLM before Moshi: vLLM refuses to start if less
+GPU memory is free than it asks for.
 
 If Vast credit runs out, Vast stops the instance and may delete it with its disk. Rebuilding
 from scratch on a new instance takes about 15 minutes: rent a 48 GB Ampere-or-newer GPU
 (BF16 is required, so no Turing/Volta cards), add it as `vastmoshi`, run `deploy/deploy.sh`.
 
-Do not `pkill -f "moshi-backend --config"` over ssh: the pattern also matches the ssh shell
-itself. Use `pkill -x moshi-backend`.
+Do not `pkill -f "moshi-backend --config"` or `pkill -f "vllm serve"` inline over ssh: the
+pattern also matches the ssh shell itself. Use `pkill -x moshi-backend` and
+`ssh vastmoshi /opt/moshirag/deploy/stop-llm.sh`.
 
 ## Testing
 
@@ -90,7 +112,8 @@ python3 -m venv /tmp/mrv && /tmp/mrv/bin/pip install sphn websockets numpy
 ```
 
 Measured on 2026-10-29 from esys: first audio after 0.35 s, audio streamed at real-time
-speed, Claude references in 0.8-2.0 s. It only works when no browser session is open
+speed, references in 0.8-2.0 s with Claude and about 0.5 s with self-hosted Qwen3-14B (no
+audible slowdown of Moshi while vLLM generates). It only works when no browser session is open
 (`batch_size: 1`).
 
 Limits: English only, one female voice (Moshika), one user at a time, and the retrieval
