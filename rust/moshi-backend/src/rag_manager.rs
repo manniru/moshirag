@@ -288,7 +288,7 @@ impl RagManager {
         let processed = process_reference_context(&context);
         let user_content = format!("{bundled_prompt}{processed}");
 
-        let request_body = serde_json::json!({
+        let mut request_body = serde_json::json!({
             "model": model_name,
             "messages": [
                 {"role": "system", "content": system_prompt},
@@ -299,6 +299,17 @@ impl RagManager {
             "stop": ["\n"],
             "reasoning_effort": "low"
         });
+        // Anthropic's OpenAI-compatible API rejects whitespace-only stop sequences;
+        // the reply is cut at the first newline below instead.
+        let anthropic = base_url.contains("api.anthropic.com");
+        if anthropic {
+            if let Some(obj) = request_body.as_object_mut() {
+                obj.remove("stop");
+                // Otherwise Claude may spend all of max_tokens thinking and return no text.
+                obj.remove("reasoning_effort");
+                obj.insert("thinking".into(), serde_json::json!({"type": "disabled"}));
+            }
+        }
 
         tracing::info!("RAG: Calling LLM API '{}' content_len={}", model_name, user_content.len());
 
@@ -355,6 +366,15 @@ impl RagManager {
             .first()
             .map(|choice| choice.message.content.clone())
             .unwrap_or_default();
+        let content = if anthropic {
+            content.trim_start().split('\n').next().unwrap_or_default().to_string()
+        } else {
+            content
+        };
+        tracing::info!("RAG: reference text: {:?}", content);
+        if content.trim().is_empty() {
+            tracing::warn!("RAG: empty reference, raw LLM response: {}", response_text);
+        }
         Ok(format!("{model_name}\t{content}"))
     }
 

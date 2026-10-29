@@ -1,3 +1,103 @@
+# MoshiRAG at Esys (`moshirag.esys.ng`)
+
+This is a deployment fork of [kyutai-labs/moshi-rag](https://github.com/kyutai-labs/moshi-rag)
+(blog: <https://kyutai.org/blog/2026-04-30-moshi-rag/>, paper: arXiv 2604.12928). The upstream
+README follows below this section, unchanged.
+
+**Live demo:** <https://moshirag.esys.ng>. Open it in Chrome, allow the microphone, use
+**headphones** (Moshi listens while it talks), and ask a factual question in English, e.g.
+"Who won the FIFA World Cup in 2018, and who was the top scorer?". One conversation at a time.
+
+## Architecture
+
+```
+browser ─https/wss─► Cloudflare ─► tunnel esys-proxmox-agent (cloudflared on host esys)
+        ─► http://127.0.0.1:18998 on esys (systemd moshirag-tunnel: ssh -L)
+        ─► Vast.ai GPU instance 127.0.0.1:8998  moshi-backend (Rust, CUDA, standalone, HTTP)
+              ├─ Moshika-RAG 7B  (kyutai/moshika-rag-candle-bf16, BF16)
+              ├─ STT 1B          (kyutai/stt-1b-en_fr-candle) for the user transcript
+              ├─ ARC4 encoder    (kyutai/ARC4_Encoder_Llama) encodes retrieved references
+              ├─ web UI          (client/dist, built with Vite)
+              └─ retrieval LLM ─► Anthropic API, claude-haiku-5-5 (OpenAI-compatible endpoint)
+```
+
+When Moshi emits its retrieval token (`<ret>`), the backend sends the transcript to Claude,
+which answers with a one-line `Reference: ...` (about 1 s). The reference is encoded and
+injected into Moshi while it keeps talking.
+
+## Where it runs
+
+| Piece | Where |
+| :--- | :--- |
+| GPU | Vast.ai instance **58180755** (label `moshirag`): 1x RTX A6000 48 GB, Romania, ~$0.52/h running (incl. 90 GB disk). Image `nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04`, ssh alias `vastmoshi` in `/root/.ssh/config` on esys |
+| Code on the instance | `/opt/moshirag` (`rust/`, `client/dist`, `deploy/`), binary `rust/target/release/moshi-backend`, config `rust/moshi-backend/config.moshirag.json`, log `/opt/moshirag/server.log`, env `/opt/moshirag/moshirag.env` (600) |
+| Models | Hugging Face cache `/root/.cache/huggingface` on the instance (~33 GB); converted tokenizer `/opt/moshirag/llama32-tokenizer.json` |
+| Port forward | esys systemd unit `moshirag-tunnel` (`deploy/moshirag-tunnel.service`): `127.0.0.1:18998` → instance `127.0.0.1:8998` |
+| Public | Cloudflare tunnel `esys-proxmox-agent` ingress `moshirag.esys.ng` → `http://127.0.0.1:18998` (no NPM), proxied CNAME in the `esys.ng` zone. Tunnel config backup `secrets/moshirag/tunnel-config-backup-*.json` |
+| Secrets (esys, not in git) | `/root/esys/secrets/moshirag/`: `vast.env` (Vast API key), `moshirag.env` (Anthropic key) |
+
+GPU memory use is about 23.7 GB of 48 GB with `batch_size: 1`.
+
+## Changes from upstream
+
+* `rust/moshi-backend/src/rag_manager.rs`: when `LLM_BASE_URL` is `api.anthropic.com`, the
+  request drops `stop: ["\n"]` (Anthropic rejects whitespace-only stop sequences) and
+  `reasoning_effort`, and sends `thinking: {"type": "disabled"}` (otherwise Claude can spend all
+  256 tokens thinking and return an empty reference). The reply is cut at its first newline
+  instead. Every reference is logged (`RAG: reference text: ...`), and the raw LLM response is
+  logged when the reference is empty.
+* `rust/moshi-backend/config.moshirag.json`: Hub paths in `org/repo:file` form, `batch_size: 1`,
+  `use_https: false` (TLS ends at Cloudflare), listen on `127.0.0.1`, `rag_timeout: 3.0`
+  (upstream 1.5), static dir `/opt/moshirag/client/dist`, converted Llama tokenizer.
+* `deploy/convert_tokenizer.py`: the backend uses `tokenizers` 0.15, which cannot read the
+  current Llama 3.2 `tokenizer.json` (merges stored as pairs). The script rewrites it to the old
+  layout. The source file is the ungated copy `unsloth/Llama-3.2-3B-Instruct` (identical to
+  `meta-llama/Llama-3.2-3B-Instruct`, whose licence the `mannir` HF account has also accepted).
+
+## Operating it
+
+```bash
+cd /root/esys/moshirag
+deploy/vast.sh status          # state, price, ssh port, remaining Vast credit
+deploy/vast.sh stop            # pause: stops GPU billing (disk still ~$0.04/h)
+deploy/vast.sh start           # resume; then check the ssh port (see below) and start the server
+deploy/deploy.sh vastmoshi     # copy code, build (incremental), restart the server
+ssh vastmoshi tail -f /opt/moshirag/server.log
+```
+
+After `start`, Vast may give the instance a new SSH port or IP: compare `deploy/vast.sh status`
+with `Host vastmoshi` in `/root/.ssh/config`, fix it, `systemctl restart moshirag-tunnel`, then
+run `deploy/deploy.sh` (or `ssh vastmoshi 'setsid nohup /opt/moshirag/deploy/run.sh >
+/opt/moshirag/server.log 2>&1 < /dev/null &'`). The server does not start by itself after a
+resume: Vast containers have no systemd. Model loading takes about 40 s; the site answers
+502 until then.
+
+If Vast credit runs out, Vast stops the instance and may delete it with its disk. Rebuilding
+from scratch on a new instance takes about 15 minutes: rent a 48 GB Ampere-or-newer GPU
+(BF16 is required, so no Turing/Volta cards), add it as `vastmoshi`, run `deploy/deploy.sh`.
+
+Do not `pkill -f "moshi-backend --config"` over ssh: the pattern also matches the ssh shell
+itself. Use `pkill -x moshi-backend`.
+
+## Testing
+
+`tests/ws_e2e.py` streams a WAV file to the WebSocket API in real time and prints Moshi's text,
+the reference text it received, and timing:
+
+```bash
+python3 -m venv /tmp/mrv && /tmp/mrv/bin/pip install sphn websockets numpy
+/tmp/mrv/bin/python tests/ws_e2e.py wss://moshirag.esys.ng/api/chat tests/question_worldcup_2018.wav
+```
+
+Measured on 2026-10-29 from esys: first audio after 0.35 s, audio streamed at real-time
+speed, Claude references in 0.8-2.0 s. It only works when no browser session is open
+(`batch_size: 1`).
+
+Limits: English only, one female voice (Moshika), one user at a time, and the retrieval
+trigger sometimes fires before the question is fully transcribed.
+
+---
+
 # MoshiRAG: Asynchronous Knowledge Retrieval for Full-Duplex Speech Language Models
 
 ![precommit badge](https://github.com/kyutai-labs/moshi-rag/workflows/precommit/badge.svg)

@@ -1,0 +1,11 @@
+[Unit]
+Description=SSH port forward 127.0.0.1:18998 -> Vast.ai MoshiRAG instance :8998
+After=network-online.target
+
+[Service]
+ExecStart=/usr/bin/ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o BatchMode=yes -L 127.0.0.1:18998:127.0.0.1:8998 vastmoshi
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
