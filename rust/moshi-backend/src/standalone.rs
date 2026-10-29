@@ -94,7 +94,8 @@ impl stream_both::AppStateInner {
             stt_device
         );
 
-        let dtype = if device.is_cuda() { candle::DType::BF16 } else { candle::DType::F32 };
+        // F32 doubles every model (the 7B LM alone is ~31 GB) and made a 64 GB Mac swap; Metal runs BF16.
+        let dtype = if device.is_cuda() || device.is_metal() { candle::DType::BF16 } else { candle::DType::F32 };
         let batch_size = if config.batch_size > 1 { config.batch_size } else { 1 };
         // Uses config.use_rag() to choose LM loader.
         let lm_model = if config.use_rag() {
@@ -198,9 +199,12 @@ impl stream_both::AppStateRag {
         let inner = stream_both::AppStateInner::new(args, config)?;
         let inner = std::sync::Arc::new(inner);
 
-        // Determine device for STT models based on stt_gpu_id
-        let stt_device = create_device(args.cpu, config.stt_gpu_id)?;
-        let stt_dtype = if stt_device.is_cuda() { candle::DType::BF16 } else { candle::DType::F32 };
+        // Load the STT models on the same device the streaming code uses for STT inputs. On Metal
+        // every new_metal() call is a distinct device and candle refuses to mix tensors from two
+        // of them ("device mismatch in conv1d"); a single device shared with the Moshi LM is not
+        // an option either, as concurrent encoding from both threads trips a Metal assertion.
+        let stt_device = inner.stt_device.clone();
+        let stt_dtype = if stt_device.is_cuda() || stt_device.is_metal() { candle::DType::BF16 } else { candle::DType::F32 };
 
         let stt_mimi_device =
             if config.use_cpu_for_mimi { &candle::Device::Cpu } else { &stt_device };

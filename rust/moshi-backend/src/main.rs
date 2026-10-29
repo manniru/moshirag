@@ -158,7 +158,9 @@ async fn main() -> Result<()> {
             standalone::run(&standalone_args, &config).await?;
         }
         Command::Benchmark(standalone_args) => {
-            let config = stream_both::Config::load(&args.config)?;
+            let mut config = stream_both::Config::load(&args.config)?;
+            // Resolve "org/repo:file" model paths through the Hub cache, as standalone does.
+            standalone::download_from_hub(&mut config).await?;
             let _guard = if standalone_args.chrome_tracing {
                 use tracing_chrome::ChromeLayerBuilder;
                 use tracing_subscriber::prelude::*;

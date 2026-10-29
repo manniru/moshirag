@@ -312,14 +312,20 @@ impl RagManager {
         }
         // Self-hosted vLLM (e.g. Qwen3): vLLM turns `reasoning_effort` into thinking mode, and
         // with stop "\n" the reply is then just "<think>". Ask the chat template for no thinking.
+        // Ollama (port 11434, used on macOS) ignores chat_template_kwargs; its OpenAI-compatible
+        // API turns thinking off with reasoning_effort "none".
         let local = base_url.contains("://127.0.0.1") || base_url.contains("://localhost");
         if local {
             if let Some(obj) = request_body.as_object_mut() {
-                obj.remove("reasoning_effort");
-                obj.insert(
-                    "chat_template_kwargs".into(),
-                    serde_json::json!({"enable_thinking": false}),
-                );
+                if base_url.contains(":11434") {
+                    obj.insert("reasoning_effort".into(), serde_json::json!("none"));
+                } else {
+                    obj.remove("reasoning_effort");
+                    obj.insert(
+                        "chat_template_kwargs".into(),
+                        serde_json::json!({"enable_thinking": false}),
+                    );
+                }
             }
         }
 

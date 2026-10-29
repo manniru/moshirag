@@ -435,7 +435,7 @@ impl BatchedState {
                         inner.stt_device,
                         inner.config.stt_gpu_id
                     );
-                    let dtype = if inner.stt_device.is_cuda() {
+                    let dtype = if inner.stt_device.is_cuda() || inner.stt_device.is_metal() {
                         candle::DType::BF16
                     } else {
                         candle::DType::F32
@@ -1534,6 +1534,13 @@ impl StreamingModel {
         } else {
             &self.device
         };
+        // The STT Mimi lives on the STT device. On Metal that is a distinct device even on the same
+        // GPU, and candle rejects mixing tensors from two devices ("device mismatch in conv1d").
+        let stt_mimi_device = if self.inner_state().config.use_cpu_for_mimi {
+            candle::Device::Cpu
+        } else {
+            self.inner_state().stt_device.clone()
+        };
 
         let frame_rate = mimi.config().frame_rate;
         let frame_size = (mimi.config().sample_rate / frame_rate).ceil() as usize;
@@ -1590,7 +1597,8 @@ impl StreamingModel {
                     candle::Tensor::from_vec(data, (1, 1, pcm_len), mimi_device)?
                 }
             };
-            let pcms_for_stt = &pcms;
+            // Built from the samples directly: candle cannot copy between two Metal devices.
+            let pcms_for_stt = &candle::Tensor::from_vec(in_pcm.clone(), (1, 1, pcm_len), &stt_mimi_device)?;
 
             // Always run both encoders on this chunk so they stay aligned.
             let audio_tokens_main = mimi.encode_step(&pcms_for_main.into(), &().into())?;
