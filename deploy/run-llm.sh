@@ -4,6 +4,8 @@
 export PATH=/opt/vllm/bin:$PATH
 # FlashInfer's JIT sampler needs an nvcc matching torch's CUDA (13.x); the image ships 12.4.
 export VLLM_USE_FLASHINFER_SAMPLER=0
+# Fully offline at runtime: no Hugging Face Hub lookups, no vLLM usage statistics.
+export HF_HUB_OFFLINE=1 VLLM_NO_USAGE_STATS=1 DO_NOT_TRACK=1
 MODEL=${LLM_HF_MODEL:-Qwen/Qwen3-14B-AWQ}
 NAME=${LLM_SERVED_NAME:-qwen3-14b}
 exec vllm serve "$MODEL" \
