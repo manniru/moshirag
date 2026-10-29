@@ -3,6 +3,7 @@ import { FC, useState, useCallback, useRef, MutableRefObject, useEffect } from "
 import { useSearchParams } from "react-router-dom";
 import { Conversation } from "../Conversation/Conversation";
 import { colors } from "../../theme/colors";
+import { brand } from "../../brand";
 
 /** t ∈ [0,1]: breathing glow size for Start Session (accent green, matches theme) */
 function queueStartGlowBoxShadow(t: number): string {
@@ -244,13 +245,12 @@ export const Queue: FC = () => {
             className="flex items-center gap-3 hover:opacity-90 transition-opacity"
             aria-label="Back to welcome page"
           >
-            <img src="/assets/kyutai.jpeg" alt="Kyutai" className="h-12 w-12 object-contain" />
-            <h1 className="text-5xl font-semibold tracking-tight text-center flex flex-row items-center gap-2" style={{ color: colors.accentGreenDark }}>
-              Moshi
-              <span className="text-[1.5rem] font-bold flex flex-col items-center leading-none" style={{ color: colors.accentBlue }}>
-                <span>R</span>
-                <span className="-mt-1">A</span>
-                <span className="-mt-1">G</span>
+            <img src={brand.logo} alt={brand.company} className="h-12 w-12 rounded-lg bg-white p-0.5 object-contain" />
+            <h1 className="text-5xl font-semibold tracking-tight flex flex-row items-center gap-2" style={{ color: colors.accentGreen }}>
+              {brand.name}
+              <span className="text-base font-bold flex flex-col items-start leading-none" style={{ color: colors.accentBlue }}>
+                <span>Voice</span>
+                <span>AI</span>
               </span>
             </h1>
           </a>
@@ -276,30 +276,21 @@ export const Queue: FC = () => {
           <>
             <div className="text-left">
               <p className="text-sm leading-relaxed mb-2" style={{ color: colors.textLight }}>
-                Meet <span className="font-bold" style={{ color: colors.accentGreenDark }}>Moshi</span>
-                <span className="font-bold" style={{ color: colors.accentBlue }}>RAG</span>: A full-duplex conversational AI with Retrieval-Augmented Generation (RAG) capabilities.
+                Meet <span className="font-bold" style={{ color: colors.accentGreen }}>{brand.name} {brand.suffix}</span>: a full-duplex voice assistant that listens and speaks at the same time, like a natural phone call.
               </p>
               <p className="text-sm leading-relaxed mb-2" style={{ color: colors.textLight }}>
-                <span className="font-bold" style={{ color: colors.accentGreenDark }}>Moshi</span>
-                <span className="font-bold" style={{ color: colors.accentBlue }}>RAG</span> listens and speaks simultaneously, creating a natural flow and a seamless communication experience.
+                When a question needs facts, it looks them up in the background with its retrieval model and keeps talking while it does.
               </p>
               <p className="text-sm leading-relaxed mb-2" style={{ color: colors.textLight }}>
-                When things get complex, <span className="font-bold" style={{ color: colors.accentGreenDark }}>Moshi</span>
-                <span className="font-bold" style={{ color: colors.accentBlue }}>RAG</span> triggers a back-end model to retrieve reference documents asynchronously, providing expert assistance without ever breaking the conversation.
+                Everything runs on this machine: speech, language model and retrieval. No audio leaves the computer.
               </p>
+              <p className="text-sm leading-relaxed mb-2" style={{ color: colors.textLight }}>Conversations are limited to 5 minutes. Google Chrome gives the best experience.</p>
               <p className="text-sm leading-relaxed mb-2" style={{ color: colors.textLight }}>
-                Ask it to plan your summer vacation, share a recipe for lasagna, or dive into a philosophical debate on the meaning of life.
-              </p>
-              <p className="text-sm leading-relaxed mb-2" style={{ color: colors.textLight }}>Conversations are limited to 5 minutes.</p>
-              <p className="text-sm leading-relaxed mb-2" style={{ color: colors.textLight }}>
-                While we strive for universal support, Google Chrome offers the best experience.
-              </p>
-              <p className="text-sm leading-relaxed mb-2" style={{ color: colors.textLight }}>
-                Baked with &lt;3 @
-                <a href="https://kyutai.org/" className="underline" style={{ color: colors.accentGreenDark }}>
-                  Kyutai
+                A product of{" "}
+                <a href={brand.companyUrl} className="underline" style={{ color: colors.accentGreen }}>
+                  {brand.company}
                 </a>
-                .
+                , built on the open-source MoshiRAG model by Kyutai.
               </p>
             </div>
             {showMicrophoneAccessMessage && (
@@ -324,23 +315,7 @@ export const Queue: FC = () => {
         )}
       </div>
       <div className="absolute bottom-8 text-center text-xs z-10" style={{ color: colors.textLight }}>
-        <a
-          target="_blank"
-          rel="noreferrer"
-          href="https://kyutai.org/moshi-terms.pdf"
-          className="transition-colors hover:opacity-85"
-        >
-          Terms of Use
-        </a>
-        <span className="mx-2">•</span>
-        <a
-          target="_blank"
-          rel="noreferrer"
-          href="https://kyutai.org/moshi-privacy.pdf"
-          className="transition-colors hover:opacity-85"
-        >
-          Privacy Policy
-        </a>
+        © {new Date().getFullYear()} {brand.company}
       </div>
     </div>
       )}

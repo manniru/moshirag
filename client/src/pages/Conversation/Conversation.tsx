@@ -15,6 +15,7 @@ import { SessionFeedbackModal } from "./components/SessionFeedbackModal";
 import { ServerAudioStats } from "./components/ServerAudio/ServerAudioStats";
 import { AudioStats } from "./hooks/useServerAudio";
 import { colors } from "../../theme/colors";
+import { brand } from "../../brand";
 import type { WSMessage } from "../../protocol/types";
 import {
   parseRetrievalCapabilities,
@@ -331,7 +332,7 @@ const ConversationContent: FC<{
     const releasedSlotForFeedbackRef = useRef(false);
 
     useEffect(() => {
-      if (isOver && !isBypass && handshakeCompleted) {
+      if (brand.showFeedbackSurvey && isOver && !isBypass && handshakeCompleted) {
         setShowFeedbackModal(true);
       }
     }, [isOver, isBypass, handshakeCompleted]);
@@ -369,7 +370,7 @@ const ConversationContent: FC<{
     const transcriptTextForRecording = useMemo(
       () =>
         messages
-          .map((m) => `${m.role === "user" ? "User" : "Moshi"}: ${m.text}`)
+          .map((m) => `${m.role === "user" ? "User" : brand.assistant}: ${m.text}`)
           .join("\n"),
       [messages],
     );
@@ -380,7 +381,7 @@ const ConversationContent: FC<{
     const saveTranscriptJson = useCallback(() => {
       const turns = messages.map((msg, index) => ({
         turn: index + 1,
-        speaker: msg.role === "user" ? "You" : "Moshi",
+        speaker: msg.role === "user" ? "You" : brand.assistant,
         role: msg.role,
         text: msg.text.trim(),
         reference: msg.referenceText?.trim() || null,
@@ -404,7 +405,7 @@ const ConversationContent: FC<{
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `moshirag-transcript-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+      a.download = `brilliant-voice-ai-transcript-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -549,13 +550,12 @@ const ConversationContent: FC<{
             className="flex items-center gap-3 hover:opacity-90 transition-opacity"
             aria-label="Back to welcome page"
           >
-            <img src="/assets/kyutai.jpeg" alt="Kyutai" className="h-8 w-8 object-contain" />
-            <h1 className="text-lg font-semibold tracking-tight flex flex-row items-center gap-1" style={{ color: colors.accentGreenDark }}>
-              Moshi
-              <span className="text-xs font-bold flex flex-col items-center leading-none" style={{ color: colors.accentBlue }}>
-                <span>R</span>
-                <span className="-mt-0.5">A</span>
-                <span className="-mt-0.5">G</span>
+            <img src={brand.logo} alt={brand.company} className="h-8 w-8 rounded-lg bg-white p-0.5 object-contain" />
+            <h1 className="text-lg font-semibold tracking-tight flex flex-row items-center gap-2" style={{ color: colors.accentGreen }}>
+              {brand.name}
+              <span className="text-[0.6rem] font-bold flex flex-col items-start leading-none" style={{ color: colors.accentBlue }}>
+                <span>Voice</span>
+                <span>AI</span>
               </span>
             </h1>
           </a>
